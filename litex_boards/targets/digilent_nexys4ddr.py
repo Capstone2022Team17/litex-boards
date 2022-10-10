@@ -69,6 +69,7 @@ class BaseSoC(SoCCore):
                 nphases      = 2,
                 sys_clk_freq = sys_clk_freq)
             self.add_sdram("sdram",
+                with_bist     = True,
                 phy           = self.ddrphy,
                 module        = MT47H64M16(sys_clk_freq, "1:2"),
                 l2_cache_size = kwargs.get("l2_size", 8192)
