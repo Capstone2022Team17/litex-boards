@@ -181,6 +181,9 @@ def main():
         with_analyzer   = args.with_analyzer,
         **soc_core_argdict(args)
 	)
+
+    print(soc.bus)
+
     builder = Builder(soc, **builder_argdict(args))
     if args.build:
         builder.build()
