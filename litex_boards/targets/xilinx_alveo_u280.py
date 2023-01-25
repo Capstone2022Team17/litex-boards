@@ -13,6 +13,7 @@
 #     lxterm /dev/ttyUSBx --speed=115200
 
 import os
+from litex.soc.interconnect.axi import axi_lite
 
 from migen import *
 from migen.genlib.resetsync import AsyncResetSynchronizer
@@ -40,6 +41,10 @@ from litedram.common import *
 from litedram.frontend.axi import *
 
 from litescope import LiteScopeAnalyzer
+
+from litedram.frontend.bist import  LiteDRAMBISTGenerator, LiteDRAMBISTChecker
+
+from litex_boards.targets.HBMPortAccess import HBMAXILiteAccess, HBMReadAndWriteSM
 
 # CRG ----------------------------------------------------------------------------------------------
 
@@ -124,6 +129,44 @@ class BaseSoC(SoCCore):
             # Link HBM2 channel 0 as main RAM
             self.bus.add_region("main_ram", SoCRegion(origin=0x4000_0000, size=0x1000_0000, linker=True)) # 256MB.
 
+            axi_lite_hbm = AXILiteInterface(data_width=256, address_width=33)
+            self.submodules += AXILite2AXI(axi_lite_hbm, hbm.axi[4])
+            self.submodules.hbm_4 = HBMReadAndWriteSM(axi_lite_hbm)
+            self.add_csr("hbm_4")
+
+            # axi_lite_hbm = AXILiteInterface(data_width=256, address_width=33)
+            # self.submodules += AXILite2AXI(axi_lite_hbm, hbm.axi[5])
+
+            
+
+            # self.sync += [axi_lite_hbm.write(0x40000000, 0x123ABC)]
+
+            
+
+            # self.submodules.hbm_5 = HBMAXILiteAccess(hbm.axi[5])
+            # self.add_csr("hbm_5")
+
+            # #BIST GENERATOR
+            # name = "sdram"
+            # hbm_axi_5 = hbm.axi[5]
+            # hbm_axi_6 = hbm.axi[6]
+            # # # Connecting AXI to AXILite for hbm ports
+            # # # For Generator
+            # # axi_lite_hbm_4 = AXILiteInterface(data_width=256, address_width=33)
+            # # self.submodules += AXILite2AXI(axi_lite_hbm_4, hbm_axi_4)
+            # # self.bus.add_slave(f"hbm4", axi_lite_hbm_4, SoCRegion(origin=0x4000_0000 + 0x1000_0000*2, size=0x1000_0000)) # 256MB.
+            # # # For Checker
+            # # axi_lite_hbm_5 = AXILiteInterface(data_width=256, address_width=33)
+            # # self.submodules += AXILite2AXI(axi_lite_hbm_5, hbm_axi_5)
+            # # self.bus.add_slave(f"hbm5", axi_lite_hbm_5, SoCRegion(origin=0x4000_0000 + 0x1000_0000*3, size=0x1000_0000)) # 256MB.
+            # # # End of new code
+            # hbm_axi_5.__class__ = LiteDRAMAXIPort
+            # hbm_axi_6.__class__ = LiteDRAMAXIPort
+            # sdram_generator = LiteDRAMBISTGenerator(hbm_axi_5)
+            # sdram_checker   = LiteDRAMBISTChecker(hbm_axi_6)
+            # setattr(self, f"{name}_generator", sdram_generator)
+            # setattr(self, f"{name}_checker", sdram_checker)
+        
         else:
             # DDR4 SDRAM -------------------------------------------------------------------------------
             if not self.integrated_main_ram_size:
@@ -134,6 +177,7 @@ class BaseSoC(SoCCore):
                     iodelay_clk_freq = 600e6,
                     is_rdimm         = True)
                 self.add_sdram("sdram",
+                    with_bist     = True,
                     phy           = self.ddrphy,
                     module        = MTA18ASF2G72PZ(sys_clk_freq, "1:4"),
                     size          = 0x40000000,
