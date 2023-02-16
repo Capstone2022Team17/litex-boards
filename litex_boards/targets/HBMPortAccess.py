@@ -21,7 +21,8 @@ class HBMReadAndWriteSM(Module, AutoCSR):
     # Here, axi_port is an AXILite object, to be used with AXILite2AXI.
     def __init__(self, axi_port):
 
-        data_sig = Signal(256)
+        self.data_sig_r = Signal(256)
+        self.data_sig_w = Signal(256)
 
         self.perform_write = CSRStorage(ONE_BIT_WIDE, description="Perform a write")
         self.perform_read = CSRStorage(ONE_BIT_WIDE, description="Perform a read")
@@ -34,8 +35,28 @@ class HBMReadAndWriteSM(Module, AutoCSR):
         self.address_readwrite = CSRStorage(
             28, description="Address to perform read or write at"
         )
-        # Data was axi_port.data_width, changed to 32 for now
-        self.data_writein = CSRStorage(
+        self.data_writein1 = CSRStorage(
+            32, description="Data to write after performing write"
+        )
+        self.data_writein2 = CSRStorage(
+            32, description="Data to write after performing write"
+        )
+        self.data_writein3 = CSRStorage(
+            32, description="Data to write after performing write"
+        )
+        self.data_writein4 = CSRStorage(
+            32, description="Data to write after performing write"
+        )
+        self.data_writein5 = CSRStorage(
+            32, description="Data to write after performing write"
+        )
+        self.data_writein6 = CSRStorage(
+            32, description="Data to write after performing write"
+        )
+        self.data_writein7 = CSRStorage(
+            32, description="Data to write after performing write"
+        )
+        self.data_writein8 = CSRStorage(
             32, description="Data to write after performing write"
         )
         self.data_readout1 = CSRStatus(
@@ -112,80 +133,83 @@ class HBMReadAndWriteSM(Module, AutoCSR):
         hbm_port_fsm.act(
             "WAIT_INSTRUCTION",
             self.waitinstruction_fsm.status.eq(1),
-            # axi_port.b.ready.eq(1),
-            # axi_port.r.ready.eq(1),
             If(
                 self.perform_read.storage,
                 NextState("PERFORM_READ_COMMAND"),
             )
             .Elif(
                 self.perform_write.storage,
-                NextState("PREPARE_WRITE_COMMAND"),
+                NextState("EXTEND_ADDRESS_SIG"),
             )
             .Else(
                 NextState("WAIT_INSTRUCTION"),
             ),
         )
         hbm_port_fsm.act(
+            "EXTEND_ADDRESS_SIG",
+            axi_port.w.data.eq(self.data_sig_w),
+            axi_port.aw.addr.eq(self.address_readwrite.storage << 5),
+            axi_port.w.strb.eq(self.strb_readwrite.storage),
+            NextState("PREPARE_WRITE_COMMAND"),
+        )
+        hbm_port_fsm.act(
             "PREPARE_WRITE_COMMAND",
             self.prepwritecommand_fsm.status.eq(1),
-            axi_port.aw.valid.eq(1),
             axi_port.aw.addr.eq(self.address_readwrite.storage << 5),
-            axi_port.w.data.eq(self.data_writein.storage),
-            axi_port.w.valid.eq(1),
+            axi_port.aw.valid.eq(1),
+            axi_port.w.data.eq(self.data_sig_w),
             axi_port.w.strb.eq(self.strb_readwrite.storage),
-            
-            If((axi_port.aw.ready), NextState("RESET_ADDR_WRITE"),).Else(
+            axi_port.w.valid.eq(1),
+            If((axi_port.aw.ready & axi_port.w.ready), NextState("PREPARE_W_RESPONSE"),).Else(
                 NextState("PREPARE_WRITE_COMMAND"),
             ),
         )
         # hbm_port_fsm.act(
-        #     "PREPARE_WRITE",
-        #     self.prepwrite_fsm.status.eq(1),
-        #     axi_port.w.data.eq(self.data_writein.storage),
-        #     axi_port.w.strb.eq(self.strb_readwrite.storage),
+        #     "CONTINUE_WRITE_COMMAND",
         #     axi_port.aw.addr.eq(self.address_readwrite.storage << 5),
-        #     axi_port.aw.valid.eq(1),
+        #     axi_port.w.data.eq(self.data_sig_w),
+        #     axi_port.w.strb.eq(self.strb_readwrite.storage),
         #     axi_port.w.valid.eq(1),
-        #     If(axi_port.w.ready, NextState("PREPARE_W_RESPONSE"),).Else(
-        #         NextState("PREPARE_WRITE"),
+        #     axi_port.aw.valid.eq(0),
+        #     If((axi_port.w.ready), NextState("PREPARE_W_RESPONSE"),).Else(
+        #         NextState("CONTINUE_WRITE_COMMAND"),
         #     ),
         # )
         hbm_port_fsm.act(
-            "RESET_ADDR_WRITE",
-            axi_port.aw.valid.eq(0),
-            axi_port.aw.addr.eq(0),
-            #axi_port.aw.addr.eq(self.address_readwrite.storage << 5),
-            If((axi_port.w.ready), NextState("PREPARE_W_RESPONSE"),).Else(
-                NextState("RESET_ADDR_WRITE"),
-            ),
-        )
-        hbm_port_fsm.act(
             "PREPARE_W_RESPONSE",
             self.prepwriteresponse_fsm.status.eq(1),
+            axi_port.aw.addr.eq(self.address_readwrite.storage << 5),
+            axi_port.w.data.eq(self.data_sig_w),
+            axi_port.w.strb.eq(self.strb_readwrite.storage),
             axi_port.w.valid.eq(0),
-            axi_port.w.strb.eq(0),
-            axi_port.b.ready.eq(1),
-            #axi_port.w.data.eq(self.data_writein.storage),   
-            #axi_port.w.strb.eq(self.strb_readwrite.storage),
+            #axi_port.b.ready.eq(1),
             If(axi_port.b.valid, NextState("DONE_WRITE")).Else(
                 NextState("PREPARE_W_RESPONSE")
             ),
         )
         hbm_port_fsm.act(
             "DONE_WRITE",
+            axi_port.b.ready.eq(1),
+            axi_port.aw.addr.eq(self.address_readwrite.storage << 5),
+            axi_port.w.data.eq(self.data_sig_w),
+            axi_port.w.strb.eq(self.strb_readwrite.storage),
+            NextState("WAIT_ACK_W"),
+        )
+        hbm_port_fsm.act(
+            "WAIT_ACK_W",
             self.donewrite_fsm.status.eq(1),
             self.exec_write_done.status.eq(1),
             self.write_resp.status.eq(axi_port.b.resp),
-            axi_port.b.ready.eq(0),
             If(self.acknowledge_readwrite.storage, NextState("WAIT_INSTRUCTION"),).Else(
-                NextState("DONE_WRITE"),
+                NextState("WAIT_ACK_W"),
             ),
         )
+
         hbm_port_fsm.act(
             "PERFORM_READ_COMMAND",
             self.prepreadcommand_fsm.status.eq(1),
             axi_port.ar.valid.eq(1),
+            # axi_port.r.ready.eq(1),
             axi_port.ar.addr.eq(self.address_readwrite.storage << 5),
             If(axi_port.ar.ready, NextState("PERFORM_READ")).Else(
                 NextState("PERFORM_READ_COMMAND")
@@ -194,34 +218,41 @@ class HBMReadAndWriteSM(Module, AutoCSR):
         hbm_port_fsm.act(
             "PERFORM_READ",
             self.prepread_fsm.status.eq(1),
-            #axi_port.ar.addr.eq(self.address_readwrite.storage << 5),
-            axi_port.ar.valid.eq(0),
-            axi_port.r.ready.eq(1),
-            If(axi_port.r.valid, NextState("DONE_READ")).Else(
+            axi_port.ar.addr.eq(self.address_readwrite.storage << 5),
+            # axi_port.r.ready.eq(1),
+            self.exec_read_done.status.eq(1),
+            self.data_sig_r.eq(axi_port.r.data),
+            self.read_resp.status.eq(axi_port.r.resp),
+            If(axi_port.r.valid & self.acknowledge_readwrite.storage, NextState("DONE_READ")).Else(
                 NextState("PERFORM_READ")
             ),
         )
         hbm_port_fsm.act(
             "DONE_READ",
             self.doneread_fsm.status.eq(1),
-            self.exec_read_done.status.eq(1),
-            data_sig.eq(axi_port.r.data),
-            self.read_resp.status.eq(axi_port.r.resp),
-            axi_port.r.ready.eq(0),
-            If(self.acknowledge_readwrite.storage, NextState("WAIT_INSTRUCTION"),).Else(
-                NextState("DONE_READ"),
-            ),
+            axi_port.ar.addr.eq(self.address_readwrite.storage << 5),
+            axi_port.r.ready.eq(1),
+            NextState("WAIT_INSTRUCTION"),
         )
 
         self.comb += [
-            self.data_readout1.status.eq(data_sig[:32]),
-            self.data_readout2.status.eq(data_sig[32:64]),
-            self.data_readout3.status.eq(data_sig[64:96]),
-            self.data_readout4.status.eq(data_sig[96:128]),
-            self.data_readout5.status.eq(data_sig[128:160]),
-            self.data_readout6.status.eq(data_sig[160:192]),
-            self.data_readout7.status.eq(data_sig[192:224]),
-            self.data_readout8.status.eq(data_sig[224:256])
+            self.data_readout1.status.eq(self.data_sig_r[:32]),
+            self.data_readout2.status.eq(self.data_sig_r[32:64]),
+            self.data_readout3.status.eq(self.data_sig_r[64:96]),
+            self.data_readout4.status.eq(self.data_sig_r[96:128]),
+            self.data_readout5.status.eq(self.data_sig_r[128:160]),
+            self.data_readout6.status.eq(self.data_sig_r[160:192]),
+            self.data_readout7.status.eq(self.data_sig_r[192:224]),
+            self.data_readout8.status.eq(self.data_sig_r[224:256]),
+
+            self.data_sig_w[:32].eq(self.data_writein1.storage),
+            self.data_sig_w[32:64].eq(self.data_writein2.storage),
+            self.data_sig_w[64:96].eq(self.data_writein3.storage),
+            self.data_sig_w[96:128].eq(self.data_writein4.storage),
+            self.data_sig_w[128:160].eq(self.data_writein5.storage),
+            self.data_sig_w[160:192].eq(self.data_writein6.storage),
+            self.data_sig_w[192:224].eq(self.data_writein7.storage),
+            self.data_sig_w[224:256].eq(self.data_writein8.storage),
         ]
 
     #         def write(self, addr, data, strb=None):
@@ -407,7 +438,7 @@ from litex.soc.interconnect.axi.axi_lite import AXILiteInterface
 #     """
 
 #     def __init__(self, axi_port):
-        
+
 #         self.address = CSRStorage(28, description="Rightmost 28 bits of hbm address, will be shifted by 5")
 #         self.data = CSRStorage(32, description="32 bits of data (max storage of csrstorage)")
 #         self.perform_write = CSRStorage(ONE_BIT_WIDE, description="Start performing a write")
@@ -418,12 +449,12 @@ from litex.soc.interconnect.axi.axi_lite import AXILiteInterface
 #         if (isinstance(axi_port, AXILiteInterface) == False):
 #             self.error_occured.eq(1)
 #             return
-        
+
 #         hbm_lite_fsm = FSM(reset_state="WAIT_INSTRUCTION")
 #         self.submodules.hbm_lite_fsm = hbm_lite_fsm
 
 #         hbm_lite_fsm.act(
 #             "WAIT_INSTRUCTION",
-            
+
 #         )
 

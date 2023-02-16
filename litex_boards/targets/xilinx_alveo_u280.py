@@ -12,6 +12,7 @@
 # To interface via the serial port use:
 #     lxterm /dev/ttyUSBx --speed=115200
 
+from email.policy import default
 import os
 from litex.soc.interconnect.axi import axi_lite
 
@@ -45,6 +46,8 @@ from litescope import LiteScopeAnalyzer
 from litedram.frontend.bist import  LiteDRAMBISTGenerator, LiteDRAMBISTChecker
 
 from litex_boards.targets.HBMPortAccess import HBMAXILiteAccess, HBMReadAndWriteSM
+
+from litex.build.sim.config import SimConfig
 
 # CRG ----------------------------------------------------------------------------------------------
 
@@ -92,6 +95,9 @@ class _CRG(LiteXModule):
 # BaseSoC ------------------------------------------------------------------------------------------
 
 class BaseSoC(SoCCore):
+    # csr_peripherals += "analyzer"
+    # csr_map_update(BaseSoC.csr_map, csr_peripherals)
+
     def __init__(self, sys_clk_freq=150e6, ddram_channel=0,
         with_pcie       = False,
         with_led_chaser = False,
@@ -100,6 +106,10 @@ class BaseSoC(SoCCore):
         platform = xilinx_alveo_u280.Platform()
         if with_hbm:
             assert 225e6 <= sys_clk_freq <= 450e6
+
+
+
+
 
         # CRG --------------------------------------------------------------------------------------
         self.crg = _CRG(platform, sys_clk_freq, ddram_channel, with_hbm)
@@ -187,6 +197,66 @@ class BaseSoC(SoCCore):
             # Firmware RAM (To ease initial LiteDRAM calibration support) --------------------------
             self.add_ram("firmware_ram", 0x20000000, 0x8000)
 
+        analyzer_signals = [
+            hbm.axi[4].aw,
+            hbm.axi[4].w,
+            hbm.axi[4].b,
+            hbm.axi[4].ar,
+            hbm.axi[4].r,
+            # self.bus.slaves["hbm0"].adr,
+            # self.bus.slaves["hbm0"].dat_w,
+            # self.bus.slaves["hbm0"].dat_r,
+            # self.bus.slaves["hbm0"].sel,
+            # self.bus.slaves["hbm0"].cyc,
+            # self.bus.slaves["hbm0"].stb,
+            # self.bus.slaves["hbm0"].ack,
+            # self.bus.slaves["hbm0"].we,
+            # self.bus.slaves["hbm0"].cti,
+            # self.bus.slaves["hbm0"].bte,
+            # self.bus.slaves["hbm0"].err,
+
+            # axi_lite_hbm.aw,
+            # axi_lite_hbm.w,
+            # axi_lite_hbm.b,
+            # axi_lite_hbm.ar,
+            # axi_lite_hbm.r,
+            # self.cpu.ibus.stb,
+            # self.cpu.ibus.cyc,
+            # self.cpu.ibus.adr,
+            # self.cpu.ibus.we,
+            # self.cpu.ibus.ack,
+            # self.cpu.ibus.sel,
+            # self.cpu.ibus.dat_w,
+            # self.cpu.ibus.dat_r,
+            # self.cpu.dbus.stb,
+            # self.cpu.dbus.cyc,
+            # self.cpu.dbus.adr,
+            # self.cpu.dbus.we,
+            # self.cpu.dbus.ack,
+            # self.cpu.dbus.sel,
+            # self.cpu.dbus.dat_w,
+            # self.cpu.dbus.dat_r,
+        ]
+
+        from litescope import LiteScopeAnalyzer
+        self.submodules.analyzer = LiteScopeAnalyzer(analyzer_signals,
+            depth = 512,
+            clock_domain="sys",
+            samplerate=sys_clk_freq,
+            csr_csv="analyzer.csv",
+        )
+
+        # analyzer_signals = [axi_lite_hbm.aw]
+
+        # analyzer_depth = 128
+
+        # analyzer_clock_domain = "sys"
+
+        # self.submodules.analyzer = LiteScopeAnalyzer(analyzer_signals,
+        #                                              analyzer_depth,
+        #                                              clock_domain=analyzer_clock_domain)
+
+
         # PCIe -------------------------------------------------------------------------------------
         if with_pcie:
             self.pcie_phy = USPPCIEPHY(platform, platform.request("pcie_x4"),
@@ -203,6 +273,7 @@ class BaseSoC(SoCCore):
 # Build --------------------------------------------------------------------------------------------
 
 def main():
+
     from litex.build.parser import LiteXArgumentParser
     parser = LiteXArgumentParser(platform=xilinx_alveo_u280.Platform, description="LiteX SoC on Alveo U280.")
     parser.add_target_argument("--sys-clk-freq",    default=150e6, type=float, help="System clock frequency.") # HBM2 with 250MHz, DDR4 with 150MHz (1:4)
@@ -212,7 +283,15 @@ def main():
     parser.add_target_argument("--with-hbm",        action="store_true",       help="Use HBM2.")
     parser.add_target_argument("--with-analyzer",   action="store_true",       help="Enable Analyzer.")
     parser.add_target_argument("--with-led-chaser", action="store_true",       help="Enable LED Chaser.")
+    # parser.add_target_argument("--with-litex-sim",  action="store_true",       help="Run simulation")
     args = parser.parse_args()
+
+    args.csr_csv = "csr.csv"
+
+    # if args.with_litex_sim:
+    #     sim_config = SimConfig()
+    #     sim_config.add_clocker("sys_clk", freq_hz=args.sys_clk_freq)
+
 
     if args.with_hbm:
         args.sys_clk_freq = 250e6
@@ -228,7 +307,17 @@ def main():
 	)
     builder = Builder(soc, **parser.builder_argdict)
     if args.build:
-        builder.build(**parser.toolchain_argdict)
+        vns = builder.build(**parser.toolchain_argdict)
+        # sim_config   = SimConfig()
+        # sim_config.add_clocker("sys_clk", freq_hz=sys_clk_freq)
+        # builder.build(
+        #     sim_config       = sim_config,
+        #     interactive      = not args.non_interactive,
+        #     pre_run_callback = pre_run_callback,
+        #     **parser.toolchain_argdict,
+        # )
+
+        # soc.analyzer.export_csv(vns, "test/analyzer.csv")
 
     if args.driver:
         generate_litepcie_software(soc, os.path.join(builder.output_dir, "driver"))
