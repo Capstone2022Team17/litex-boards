@@ -139,9 +139,9 @@ class BaseSoC(SoCCore):
             # Link HBM2 channel 0 as main RAM
             self.bus.add_region("main_ram", SoCRegion(origin=0x4000_0000, size=0x1000_0000, linker=True)) # 256MB.
 
-            axi_lite_hbm = AXILiteInterface(data_width=256, address_width=33)
-            self.submodules += AXILite2AXI(axi_lite_hbm, hbm.axi[4])
-            self.submodules.hbm_4 = HBMReadAndWriteSM(axi_lite_hbm)
+            # axi_lite_hbm = AXILiteInterface(data_width=256, address_width=33)
+            # self.submodules += AXILite2AXI(axi_lite_hbm, hbm.axi[4])
+            self.submodules.hbm_4 = HBMReadAndWriteSM(hbm.axi[4])
             self.add_csr("hbm_4")
 
             # axi_lite_hbm = AXILiteInterface(data_width=256, address_width=33)

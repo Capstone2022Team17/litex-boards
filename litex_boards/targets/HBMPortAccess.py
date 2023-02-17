@@ -139,19 +139,19 @@ class HBMReadAndWriteSM(Module, AutoCSR):
             )
             .Elif(
                 self.perform_write.storage,
-                NextState("EXTEND_ADDRESS_SIG"),
+                NextState("PREPARE_WRITE_COMMAND"),
             )
             .Else(
                 NextState("WAIT_INSTRUCTION"),
             ),
         )
-        hbm_port_fsm.act(
-            "EXTEND_ADDRESS_SIG",
-            axi_port.w.data.eq(self.data_sig_w),
-            axi_port.aw.addr.eq(self.address_readwrite.storage << 5),
-            axi_port.w.strb.eq(self.strb_readwrite.storage),
-            NextState("PREPARE_WRITE_COMMAND"),
-        )
+        # hbm_port_fsm.act(
+        #     "EXTEND_ADDRESS_SIG",
+        #     axi_port.w.data.eq(self.data_sig_w),
+        #     axi_port.aw.addr.eq(self.address_readwrite.storage << 5),
+        #     axi_port.w.strb.eq(self.strb_readwrite.storage),
+        #     NextState("PREPARE_WRITE_COMMAND"),
+        # )
         hbm_port_fsm.act(
             "PREPARE_WRITE_COMMAND",
             self.prepwritecommand_fsm.status.eq(1),
@@ -254,6 +254,80 @@ class HBMReadAndWriteSM(Module, AutoCSR):
             self.data_sig_w[192:224].eq(self.data_writein7.storage),
             self.data_sig_w[224:256].eq(self.data_writein8.storage),
         ]
+
+        ##############################################################
+        # Defaults for AXI3
+        ##############################################################
+
+        burst_type="INCR"
+
+        burst_type = {
+            "FIXED": 0b00,
+            "INCR":  0b01,
+            "WRAP":  0b10,
+        }[burst_type]
+
+        burst_size = log2_int(axi_port.data_width // 8)
+
+        prot = 0
+
+        write_id = 0
+        read_id = 0
+
+        self.comb += [
+            axi_port.aw.burst.eq(burst_type),
+            axi_port.aw.len.eq(0),  # Number of data (-1) transfers (up to 16 (AXI3) or 256 (AXI4)), currently 1 transfer per burst
+            axi_port.aw.size.eq(burst_size), # Number of bytes (-1) of each data transfer (up to 1024-bit).
+            axi_port.aw.lock.eq(0),  # Normal access
+            axi_port.aw.prot.eq(prot),
+            axi_port.aw.cache.eq(0b0011),  # Normal Non-cacheable Bufferable
+            axi_port.aw.qos.eq(0),
+            axi_port.aw.id.eq(write_id),
+
+            axi_port.w.last.eq(1),
+
+            axi_port.ar.burst.eq(burst_type),
+            axi_port.ar.len.eq(0),
+            axi_port.ar.size.eq(burst_size),
+            axi_port.ar.lock.eq(0),
+            axi_port.ar.prot.eq(prot),
+            axi_port.ar.cache.eq(0b0011),
+            axi_port.ar.qos.eq(0),
+            axi_port.ar.id.eq(read_id),
+        ]
+
+
+# def ax_description(address_width, version="axi4"):
+#     len_width  = {"axi3":4, "axi4":8}[version]
+#     size_width = {"axi3":4, "axi4":3}[version]
+#     lock_width = {"axi3":2, "axi4":1}[version]
+#     # * present for interconnect with others cores but not used by LiteX.
+#     return [
+#         ("addr",   address_width),   # Address Width.
+#         ("burst",  2),               # Burst type.
+#         ("len",    len_width),       # Number of data (-1) transfers (up to 16 (AXI3) or 256 (AXI4)).
+#         ("size",   size_width),      # Number of bytes (-1) of each data transfer (up to 1024-bit).
+#         ("lock",   lock_width),      # *
+#         ("prot",   3),               # *
+#         ("cache",  4),               # *
+#         ("qos",    4),               # *
+#         ("region", 4),               # *
+#     ]
+
+# def w_description(data_width):
+#     return [
+#         ("data", data_width),
+#         ("strb", data_width//8),
+#     ]
+
+# def b_description():
+#     return [("resp", 2)]
+
+# def r_description(data_width):
+#     return [
+#         ("resp", 2),
+#         ("data", data_width),
+#     ]
 
     #         def write(self, addr, data, strb=None):
     #     if strb is None:
