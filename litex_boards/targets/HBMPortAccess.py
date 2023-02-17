@@ -18,7 +18,7 @@ class HBMReadAndWriteSM(Module, AutoCSR):
     A state machine to access the hbm in a read or write command.
     """
 
-    # Here, axi_port is an AXILite object, to be used with AXILite2AXI.
+    # Here, axi_port is an AXIInterface object connected to the HBM controller.
     def __init__(self, axi_port):
 
         self.data_sig_r = Signal(256)
@@ -145,13 +145,6 @@ class HBMReadAndWriteSM(Module, AutoCSR):
                 NextState("WAIT_INSTRUCTION"),
             ),
         )
-        # hbm_port_fsm.act(
-        #     "EXTEND_ADDRESS_SIG",
-        #     axi_port.w.data.eq(self.data_sig_w),
-        #     axi_port.aw.addr.eq(self.address_readwrite.storage << 5),
-        #     axi_port.w.strb.eq(self.strb_readwrite.storage),
-        #     NextState("PREPARE_WRITE_COMMAND"),
-        # )
         hbm_port_fsm.act(
             "PREPARE_WRITE_COMMAND",
             self.prepwritecommand_fsm.status.eq(1),
@@ -164,17 +157,6 @@ class HBMReadAndWriteSM(Module, AutoCSR):
                 NextState("PREPARE_WRITE_COMMAND"),
             ),
         )
-        # hbm_port_fsm.act(
-        #     "CONTINUE_WRITE_COMMAND",
-        #     axi_port.aw.addr.eq(self.address_readwrite.storage << 5),
-        #     axi_port.w.data.eq(self.data_sig_w),
-        #     axi_port.w.strb.eq(self.strb_readwrite.storage),
-        #     axi_port.w.valid.eq(1),
-        #     axi_port.aw.valid.eq(0),
-        #     If((axi_port.w.ready), NextState("PREPARE_W_RESPONSE"),).Else(
-        #         NextState("CONTINUE_WRITE_COMMAND"),
-        #     ),
-        # )
         hbm_port_fsm.act(
             "PREPARE_W_RESPONSE",
             self.prepwriteresponse_fsm.status.eq(1),
@@ -297,80 +279,7 @@ class HBMReadAndWriteSM(Module, AutoCSR):
         ]
 
 
-# def ax_description(address_width, version="axi4"):
-#     len_width  = {"axi3":4, "axi4":8}[version]
-#     size_width = {"axi3":4, "axi4":3}[version]
-#     lock_width = {"axi3":2, "axi4":1}[version]
-#     # * present for interconnect with others cores but not used by LiteX.
-#     return [
-#         ("addr",   address_width),   # Address Width.
-#         ("burst",  2),               # Burst type.
-#         ("len",    len_width),       # Number of data (-1) transfers (up to 16 (AXI3) or 256 (AXI4)).
-#         ("size",   size_width),      # Number of bytes (-1) of each data transfer (up to 1024-bit).
-#         ("lock",   lock_width),      # *
-#         ("prot",   3),               # *
-#         ("cache",  4),               # *
-#         ("qos",    4),               # *
-#         ("region", 4),               # *
-#     ]
 
-# def w_description(data_width):
-#     return [
-#         ("data", data_width),
-#         ("strb", data_width//8),
-#     ]
-
-# def b_description():
-#     return [("resp", 2)]
-
-# def r_description(data_width):
-#     return [
-#         ("resp", 2),
-#         ("data", data_width),
-#     ]
-
-    #         def write(self, addr, data, strb=None):
-    #     if strb is None:
-    #         strb = 2**len(self.w.strb) - 1
-    #     # aw + w
-    #     yield self.aw.valid.eq(1)
-    #     yield self.aw.addr.eq(addr)
-    #     yield self.w.data.eq(data)
-    #     yield self.w.valid.eq(1)
-    #     yield self.w.strb.eq(strb)
-    #     yield
-    #     while not (yield self.aw.ready):
-    #         yield
-    #     yield self.aw.valid.eq(0)
-    #     yield self.aw.addr.eq(0)
-    #     while not (yield self.w.ready):
-    #         yield
-    #     yield self.w.valid.eq(0)
-    #     yield self.w.strb.eq(0)
-    #     # b
-    #     yield self.b.ready.eq(1)
-    #     while not (yield self.b.valid):
-    #         yield
-    #     resp = (yield self.b.resp)
-    #     yield self.b.ready.eq(0)
-    #     return resp
-
-    # def read(self, addr):
-    #     # ar
-    #     yield self.ar.valid.eq(1)
-    #     yield self.ar.addr.eq(addr)
-    #     yield
-    #     while not (yield self.ar.ready):
-    #         yield
-    #     yield self.ar.valid.eq(0)
-    #     # r
-    #     yield self.r.ready.eq(1)
-    #     while not (yield self.r.valid):
-    #         yield
-    #     data = (yield self.r.data)
-    #     resp = (yield self.r.resp)
-    #     yield self.r.ready.eq(0)
-    #     return (data, resp)
 
 
 class HBMAXILiteAccess(Module, AutoCSR):
