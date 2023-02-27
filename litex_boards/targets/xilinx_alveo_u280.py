@@ -19,7 +19,7 @@ from litex.soc.interconnect.axi import axi_lite
 from migen import *
 from migen.genlib.resetsync import AsyncResetSynchronizer
 
-from litex.gen import *
+from litex.gen import LiteXModule
 
 from litex_boards.platforms import xilinx_alveo_u280
 
@@ -64,6 +64,11 @@ class _CRG(LiteXModule):
             self.cd_pll4x  = ClockDomain()
             self.cd_idelay = ClockDomain()
 
+            #############################
+            self.cd_hbm_ref = ClockDomain()
+            self.cd_apb     = ClockDomain()
+            #############################
+
         # # #
 
         if with_hbm:
@@ -77,6 +82,12 @@ class _CRG(LiteXModule):
             self.pll = pll = USMMCM(speedgrade=-2)
             self.comb += pll.reset.eq(self.rst)
             pll.register_clkin(platform.request("sysclk", ddram_channel), 100e6)
+
+            ##########################################
+            pll.create_clkout(self.cd_hbm_ref, 100e6)
+            pll.create_clkout(self.cd_apb,     100e6)
+            ##########################################
+
             pll.create_clkout(self.cd_pll4x, sys_clk_freq*4, buf=None, with_reset=False)
             pll.create_clkout(self.cd_idelay, 600e6) #, with_reset=False
             platform.add_false_path_constraints(self.cd_sys.clk, pll.clkin) # Ignore sys_clk to pll.clkin path created by SoC's rst.
@@ -141,41 +152,11 @@ class BaseSoC(SoCCore):
 
             # axi_lite_hbm = AXILiteInterface(data_width=256, address_width=33)
             # self.submodules += AXILite2AXI(axi_lite_hbm, hbm.axi[4])
-            self.submodules.hbm_4 = HBMReadAndWriteSM(hbm.axi[4])
-            self.add_csr("hbm_4")
 
-            # axi_lite_hbm = AXILiteInterface(data_width=256, address_width=33)
-            # self.submodules += AXILite2AXI(axi_lite_hbm, hbm.axi[5])
-
-            
-
-            # self.sync += [axi_lite_hbm.write(0x40000000, 0x123ABC)]
-
-            
-
-            # self.submodules.hbm_5 = HBMAXILiteAccess(hbm.axi[5])
-            # self.add_csr("hbm_5")
-
-            # #BIST GENERATOR
-            # name = "sdram"
-            # hbm_axi_5 = hbm.axi[5]
-            # hbm_axi_6 = hbm.axi[6]
-            # # # Connecting AXI to AXILite for hbm ports
-            # # # For Generator
-            # # axi_lite_hbm_4 = AXILiteInterface(data_width=256, address_width=33)
-            # # self.submodules += AXILite2AXI(axi_lite_hbm_4, hbm_axi_4)
-            # # self.bus.add_slave(f"hbm4", axi_lite_hbm_4, SoCRegion(origin=0x4000_0000 + 0x1000_0000*2, size=0x1000_0000)) # 256MB.
-            # # # For Checker
-            # # axi_lite_hbm_5 = AXILiteInterface(data_width=256, address_width=33)
-            # # self.submodules += AXILite2AXI(axi_lite_hbm_5, hbm_axi_5)
-            # # self.bus.add_slave(f"hbm5", axi_lite_hbm_5, SoCRegion(origin=0x4000_0000 + 0x1000_0000*3, size=0x1000_0000)) # 256MB.
-            # # # End of new code
-            # hbm_axi_5.__class__ = LiteDRAMAXIPort
-            # hbm_axi_6.__class__ = LiteDRAMAXIPort
-            # sdram_generator = LiteDRAMBISTGenerator(hbm_axi_5)
-            # sdram_checker   = LiteDRAMBISTChecker(hbm_axi_6)
-            # setattr(self, f"{name}_generator", sdram_generator)
-            # setattr(self, f"{name}_checker", sdram_checker)
+            for i in range(4, 32):
+                setattr(self.submodules, f"hbm_{i}", HBMReadAndWriteSM(hbm.axi[i]))
+                # self.submodules.hbm_4 = HBMReadAndWriteSM(hbm.axi[i])
+                self.add_csr(f"hbm_{i}")
         
         else:
             # DDR4 SDRAM -------------------------------------------------------------------------------
@@ -197,54 +178,67 @@ class BaseSoC(SoCCore):
             # Firmware RAM (To ease initial LiteDRAM calibration support) --------------------------
             self.add_ram("firmware_ram", 0x20000000, 0x8000)
 
-        analyzer_signals = [
-            hbm.axi[4].aw,
-            hbm.axi[4].w,
-            hbm.axi[4].b,
-            hbm.axi[4].ar,
-            hbm.axi[4].r,
-            # self.bus.slaves["hbm0"].adr,
-            # self.bus.slaves["hbm0"].dat_w,
-            # self.bus.slaves["hbm0"].dat_r,
-            # self.bus.slaves["hbm0"].sel,
-            # self.bus.slaves["hbm0"].cyc,
-            # self.bus.slaves["hbm0"].stb,
-            # self.bus.slaves["hbm0"].ack,
-            # self.bus.slaves["hbm0"].we,
-            # self.bus.slaves["hbm0"].cti,
-            # self.bus.slaves["hbm0"].bte,
-            # self.bus.slaves["hbm0"].err,
+            # Add HBM Core.
+            self.hbm = hbm = ClockDomainsRenamer({"axi": "sys"})(USPHBM2(platform))
 
-            # axi_lite_hbm.aw,
-            # axi_lite_hbm.w,
-            # axi_lite_hbm.b,
-            # axi_lite_hbm.ar,
-            # axi_lite_hbm.r,
-            # self.cpu.ibus.stb,
-            # self.cpu.ibus.cyc,
-            # self.cpu.ibus.adr,
-            # self.cpu.ibus.we,
-            # self.cpu.ibus.ack,
-            # self.cpu.ibus.sel,
-            # self.cpu.ibus.dat_w,
-            # self.cpu.ibus.dat_r,
-            # self.cpu.dbus.stb,
-            # self.cpu.dbus.cyc,
-            # self.cpu.dbus.adr,
-            # self.cpu.dbus.we,
-            # self.cpu.dbus.ack,
-            # self.cpu.dbus.sel,
-            # self.cpu.dbus.dat_w,
-            # self.cpu.dbus.dat_r,
-        ]
+            # Get HBM .xci.
+            os.system("wget https://github.com/litex-hub/litex-boards/files/6893157/hbm_0.xci.txt")
+            os.makedirs("ip/hbm", exist_ok=True)
+            os.system("mv hbm_0.xci.txt ip/hbm/hbm_0.xci")
 
-        from litescope import LiteScopeAnalyzer
-        self.submodules.analyzer = LiteScopeAnalyzer(analyzer_signals,
-            depth = 512,
-            clock_domain="sys",
-            samplerate=sys_clk_freq,
-            csr_csv="analyzer.csv",
-        )
+            for i in range(0, 32):
+                setattr(self.submodules, f"hbm_{i}", HBMReadAndWriteSM(hbm.axi[i]))
+                # self.submodules.hbm_4 = HBMReadAndWriteSM(hbm.axi[i])
+                self.add_csr(f"hbm_{i}")
+
+        # analyzer_signals = [
+        #     hbm.axi[4].aw,
+        #     hbm.axi[4].w,
+        #     hbm.axi[4].b,
+        #     hbm.axi[4].ar,
+        #     hbm.axi[4].r,
+        #     # self.bus.slaves["hbm0"].adr,
+        #     # self.bus.slaves["hbm0"].dat_w,
+        #     # self.bus.slaves["hbm0"].dat_r,
+        #     # self.bus.slaves["hbm0"].sel,
+        #     # self.bus.slaves["hbm0"].cyc,
+        #     # self.bus.slaves["hbm0"].stb,
+        #     # self.bus.slaves["hbm0"].ack,
+        #     # self.bus.slaves["hbm0"].we,
+        #     # self.bus.slaves["hbm0"].cti,
+        #     # self.bus.slaves["hbm0"].bte,
+        #     # self.bus.slaves["hbm0"].err,
+
+        #     # axi_lite_hbm.aw,
+        #     # axi_lite_hbm.w,
+        #     # axi_lite_hbm.b,
+        #     # axi_lite_hbm.ar,
+        #     # axi_lite_hbm.r,
+        #     # self.cpu.ibus.stb,
+        #     # self.cpu.ibus.cyc,
+        #     # self.cpu.ibus.adr,
+        #     # self.cpu.ibus.we,
+        #     # self.cpu.ibus.ack,
+        #     # self.cpu.ibus.sel,
+        #     # self.cpu.ibus.dat_w,
+        #     # self.cpu.ibus.dat_r,
+        #     # self.cpu.dbus.stb,
+        #     # self.cpu.dbus.cyc,
+        #     # self.cpu.dbus.adr,
+        #     # self.cpu.dbus.we,
+        #     # self.cpu.dbus.ack,
+        #     # self.cpu.dbus.sel,
+        #     # self.cpu.dbus.dat_w,
+        #     # self.cpu.dbus.dat_r,
+        # ]
+
+        # from litescope import LiteScopeAnalyzer
+        # self.submodules.analyzer = LiteScopeAnalyzer(analyzer_signals,
+        #     depth = 512,
+        #     clock_domain="sys",
+        #     samplerate=sys_clk_freq,
+        #     csr_csv="analyzer.csv",
+        # )
 
         # analyzer_signals = [axi_lite_hbm.aw]
 
@@ -287,6 +281,7 @@ def main():
     args = parser.parse_args()
 
     args.csr_csv = "csr.csv"
+    args.csr_address_width = 15
 
     # if args.with_litex_sim:
     #     sim_config = SimConfig()
