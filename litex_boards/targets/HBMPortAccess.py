@@ -24,11 +24,13 @@ class HBMReadAndWriteSM(Module, AutoCSR):
         self.data_sig_r = Signal(256)
         self.data_sig_w = Signal(256)
         self.strb_sig = Signal(32)
+        self.beat_counter = Signal(12)
 
         self.perform_write = CSRStorage(ONE_BIT_WIDE, description="Perform a write")
         self.perform_read = CSRStorage(ONE_BIT_WIDE, description="Perform a read")
         self.write_resp = CSRStatus(TWO_BITS_WIDE, description="Response after writing")
         self.read_resp = CSRStatus(TWO_BITS_WIDE, description="Response after read")
+        self.ticks = Signal(32)
         # self.strb_readwrite = CSRStorage(
         #     axi_port.data_width // 8,
         #     description="Indicates the byte lanes that hold valid data",
@@ -94,6 +96,10 @@ class HBMReadAndWriteSM(Module, AutoCSR):
             ONE_BIT_WIDE,
             description="Acknowledge to state machine read or write happened",
         )
+        self.burst_len = CSRStorage(
+            12, # 4 bits wide
+            description="Number of bursts (default burst size is 5, 2^5=32 bytes)"
+        )
         self.waitinstruction_fsm = CSRStatus(
             ONE_BIT_WIDE,
             description="FSM: Wait Stage",
@@ -102,10 +108,10 @@ class HBMReadAndWriteSM(Module, AutoCSR):
             ONE_BIT_WIDE, 
             description="FSM: Stage 1 of write",
         )
-        # self.prepwrite_fsm = CSRStatus(
-        #     ONE_BIT_WIDE, 
-        #     description="FSM: Stage 2 of write",
-        # )
+        self.beat_fsm = CSRStatus(
+            ONE_BIT_WIDE, 
+            description="FSM: Stage 2 of write",
+        )
         self.prepwriteresponse_fsm = CSRStatus(
             ONE_BIT_WIDE,
             description="FSM: Stage 3 of write",
@@ -127,6 +133,7 @@ class HBMReadAndWriteSM(Module, AutoCSR):
             description="FSM: Done with read",
         )
 
+
         hbm_port_fsm = FSM(reset_state="WAIT_INSTRUCTION")
         self.submodules.hbm_port_fsm = hbm_port_fsm
 
@@ -140,19 +147,14 @@ class HBMReadAndWriteSM(Module, AutoCSR):
             )
             .Elif(
                 self.perform_write.storage,
+                NextValue(self.beat_counter, 0),
+                NextValue(self.ticks, 0),
                 NextState("PREPARE_WRITE_COMMAND"),
             )
             .Else(
                 NextState("WAIT_INSTRUCTION"),
             ),
         )
-        # hbm_port_fsm.act(
-        #     "EXTEND_ADDRESS_SIG",
-        #     axi_port.w.data.eq(self.data_sig_w),
-        #     axi_port.aw.addr.eq(self.address_readwrite.storage << 5),
-        #     axi_port.w.strb.eq(self.strb_readwrite.storage),
-        #     NextState("PREPARE_WRITE_COMMAND"),
-        # )
         hbm_port_fsm.act(
             "PREPARE_WRITE_COMMAND",
             self.prepwritecommand_fsm.status.eq(1),
@@ -161,21 +163,35 @@ class HBMReadAndWriteSM(Module, AutoCSR):
             axi_port.w.data.eq(self.data_sig_w),
             axi_port.w.strb.eq(self.strb_sig),
             axi_port.w.valid.eq(1),
-            If((axi_port.aw.ready & axi_port.w.ready), NextState("PREPARE_W_RESPONSE"),).Else(
+            NextValue(self.ticks, self.ticks + 1),
+            If(((axi_port.aw.ready & axi_port.w.ready) & (axi_port.aw.len > 0)),
+                NextValue(self.beat_counter, self.beat_counter + 1),
+                NextState("WRITE_BEAT"))
+            .Elif((axi_port.aw.ready & axi_port.w.ready), 
+                NextState("PREPARE_W_RESPONSE"),)
+            .Else(
                 NextState("PREPARE_WRITE_COMMAND"),
             ),
         )
-        # hbm_port_fsm.act(
-        #     "CONTINUE_WRITE_COMMAND",
-        #     axi_port.aw.addr.eq(self.address_readwrite.storage << 5),
-        #     axi_port.w.data.eq(self.data_sig_w),
-        #     axi_port.w.strb.eq(self.strb_readwrite.storage),
-        #     axi_port.w.valid.eq(1),
-        #     axi_port.aw.valid.eq(0),
-        #     If((axi_port.w.ready), NextState("PREPARE_W_RESPONSE"),).Else(
-        #         NextState("CONTINUE_WRITE_COMMAND"),
-        #     ),
-        # )
+        hbm_port_fsm.act(
+            "WRITE_BEAT",
+            self.beat_fsm.status.eq(1),
+            axi_port.aw.addr.eq(self.address_readwrite.storage << 5),
+            axi_port.w.data.eq(self.data_sig_w),
+            axi_port.w.strb.eq(self.strb_sig),
+            axi_port.w.valid.eq(1),
+            NextValue(self.ticks, self.ticks + 1),
+            If((axi_port.w.ready & (self.beat_counter < axi_port.aw.len)),
+                NextValue(self.beat_counter, self.beat_counter + 1),
+                NextState("WRITE_BEAT")
+            ).Elif((axi_port.w.ready & (self.beat_counter == axi_port.aw.len)),
+                axi_port.w.last.eq(1),
+                NextValue(self.beat_counter, 0),
+                NextState("PREPARE_W_RESPONSE"),
+            ).Else(
+                NextState("WRITE_BEAT")
+            )
+        )
         hbm_port_fsm.act(
             "PREPARE_W_RESPONSE",
             self.prepwriteresponse_fsm.status.eq(1),
@@ -183,6 +199,7 @@ class HBMReadAndWriteSM(Module, AutoCSR):
             axi_port.w.data.eq(self.data_sig_w),
             axi_port.w.strb.eq(self.strb_sig),
             axi_port.w.valid.eq(0),
+            NextValue(self.ticks, self.ticks + 1),
             #axi_port.b.ready.eq(1),
             If(axi_port.b.valid, NextState("DONE_WRITE")).Else(
                 NextState("PREPARE_W_RESPONSE")
@@ -194,6 +211,7 @@ class HBMReadAndWriteSM(Module, AutoCSR):
             axi_port.aw.addr.eq(self.address_readwrite.storage << 5),
             axi_port.w.data.eq(self.data_sig_w),
             axi_port.w.strb.eq(self.strb_sig),
+            NextValue(self.ticks, self.ticks + 1),
             NextState("WAIT_ACK_W"),
         )
         hbm_port_fsm.act(
@@ -201,8 +219,12 @@ class HBMReadAndWriteSM(Module, AutoCSR):
             self.donewrite_fsm.status.eq(1),
             self.exec_write_done.status.eq(1),
             self.write_resp.status.eq(axi_port.b.resp),
-            If(self.acknowledge_readwrite.storage, NextState("WAIT_INSTRUCTION"),).Else(
+            If(self.acknowledge_readwrite.storage, 
+               NextState("WAIT_INSTRUCTION"),
+               NextValue(self.ticks, self.ticks + 1),
+            ).Else(
                 NextState("WAIT_ACK_W"),
+                NextValue(self.ticks, 0),
             ),
         )
 
@@ -246,7 +268,7 @@ class HBMReadAndWriteSM(Module, AutoCSR):
             self.data_readout7.status.eq(self.data_sig_r[192:224]),
             self.data_readout8.status.eq(self.data_sig_r[224:256]),
 
-            self.data_sig_w[:32].eq(0x11111111),
+            self.data_sig_w[:32].eq(0x00000000 + self.beat_counter),
             self.data_sig_w[32:64].eq(0x22222222),
             self.data_sig_w[64:96].eq(0x33333333),
             self.data_sig_w[96:128].eq(0x44444444),
@@ -288,15 +310,13 @@ class HBMReadAndWriteSM(Module, AutoCSR):
 
         self.comb += [
             axi_port.aw.burst.eq(burst_type),
-            axi_port.aw.len.eq(0),  # Number of data (-1) transfers (up to 16 (AXI3) or 256 (AXI4)), currently 1 transfer per burst
+            axi_port.aw.len.eq(self.burst_len.storage),  # Number of data (-1) transfers (up to 16 (AXI3) or 256 (AXI4)), currently 1 transfer per burst
             axi_port.aw.size.eq(burst_size), # Number of bytes (-1) of each data transfer (up to 1024-bit).
             axi_port.aw.lock.eq(0),  # Normal access
             axi_port.aw.prot.eq(prot),
             axi_port.aw.cache.eq(0b0011),  # Normal Non-cacheable Bufferable
             axi_port.aw.qos.eq(0),
             axi_port.aw.id.eq(write_id),
-
-            axi_port.w.last.eq(1),
 
             axi_port.ar.burst.eq(burst_type),
             axi_port.ar.len.eq(0),
@@ -479,7 +499,7 @@ class HBMAXILiteAccess(Module, AutoCSR):
         )  # (Quality of Service) Identifier sent for each write transaction
         axi_port.aw.id.eq(0)  #
 
-        # Write I/O's
+        # Write I/O'sstorage
         # Set with variables
         axi_port.w.valid.eq(self.w_valid.storage)
         self.w_ready.status.eq(axi_port.w.ready)

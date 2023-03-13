@@ -67,6 +67,7 @@ class _CRG(LiteXModule):
             #############################
             self.cd_hbm_ref = ClockDomain()
             self.cd_apb     = ClockDomain()
+            self.cd_axi_ref = ClockDomain()
             #############################
 
         # # #
@@ -86,6 +87,7 @@ class _CRG(LiteXModule):
             ##########################################
             pll.create_clkout(self.cd_hbm_ref, 100e6)
             pll.create_clkout(self.cd_apb,     100e6)
+            pll.create_clkout(self.cd_axi_ref, 400e6)
             ##########################################
 
             pll.create_clkout(self.cd_pll4x, sys_clk_freq*4, buf=None, with_reset=False)
@@ -179,7 +181,7 @@ class BaseSoC(SoCCore):
             self.add_ram("firmware_ram", 0x20000000, 0x8000)
 
             # Add HBM Core.
-            self.hbm = hbm = ClockDomainsRenamer({"axi": "sys"})(USPHBM2(platform))
+            self.hbm = hbm = ClockDomainsRenamer({"axi": "axi_ref"})(USPHBM2(platform))
 
             # Get HBM .xci.
             os.system("wget https://github.com/litex-hub/litex-boards/files/6893157/hbm_0.xci.txt")
@@ -191,54 +193,73 @@ class BaseSoC(SoCCore):
                 # self.submodules.hbm_4 = HBMReadAndWriteSM(hbm.axi[i])
                 self.add_csr(f"hbm_{i}")
 
-        # analyzer_signals = [
-        #     hbm.axi[4].aw,
-        #     hbm.axi[4].w,
-        #     hbm.axi[4].b,
-        #     hbm.axi[4].ar,
-        #     hbm.axi[4].r,
-        #     # self.bus.slaves["hbm0"].adr,
-        #     # self.bus.slaves["hbm0"].dat_w,
-        #     # self.bus.slaves["hbm0"].dat_r,
-        #     # self.bus.slaves["hbm0"].sel,
-        #     # self.bus.slaves["hbm0"].cyc,
-        #     # self.bus.slaves["hbm0"].stb,
-        #     # self.bus.slaves["hbm0"].ack,
-        #     # self.bus.slaves["hbm0"].we,
-        #     # self.bus.slaves["hbm0"].cti,
-        #     # self.bus.slaves["hbm0"].bte,
-        #     # self.bus.slaves["hbm0"].err,
+        analyzer_signals = [
+            hbm.axi[4].aw,
+            hbm.axi[4].w,
+            hbm.axi[4].b,
+            hbm.axi[4].ar,
+            hbm.axi[4].r,
+            hbm.axi[5].aw,
+            hbm.axi[5].w,
+            hbm.axi[5].b,
+            hbm.axi[5].ar,
+            hbm.axi[5].r,
+            self.hbm_4.beat_counter,
+            self.hbm_4.waitinstruction_fsm.status,
+            self.hbm_4.prepwritecommand_fsm.status,
+            self.hbm_4.beat_fsm.status,
+            self.hbm_4.prepwriteresponse_fsm.status,
+            self.hbm_4.donewrite_fsm.status,
+            self.hbm_4.ticks,
+            self.hbm_5.beat_counter,
+            self.hbm_5.waitinstruction_fsm.status,
+            self.hbm_5.prepwritecommand_fsm.status,
+            self.hbm_5.beat_fsm.status,
+            self.hbm_5.prepwriteresponse_fsm.status,
+            self.hbm_5.donewrite_fsm.status,
+            self.hbm_5.ticks,
+            # self.bus.slaves["hbm0"].adr,
+            # self.bus.slaves["hbm0"].dat_w,
+            # self.bus.slaves["hbm0"].dat_r,
+            # self.bus.slaves["hbm0"].sel,
+            # self.bus.slaves["hbm0"].cyc,
+            # self.bus.slaves["hbm0"].stb,
+            # self.bus.slaves["hbm0"].ack,
+            # self.bus.slaves["hbm0"].we,
+            # self.bus.slaves["hbm0"].cti,
+            # self.bus.slaves["hbm0"].bte,
+            # self.bus.slaves["hbm0"].err,
 
-        #     # axi_lite_hbm.aw,
-        #     # axi_lite_hbm.w,
-        #     # axi_lite_hbm.b,
-        #     # axi_lite_hbm.ar,
-        #     # axi_lite_hbm.r,
-        #     # self.cpu.ibus.stb,
-        #     # self.cpu.ibus.cyc,
-        #     # self.cpu.ibus.adr,
-        #     # self.cpu.ibus.we,
-        #     # self.cpu.ibus.ack,
-        #     # self.cpu.ibus.sel,
-        #     # self.cpu.ibus.dat_w,
-        #     # self.cpu.ibus.dat_r,
-        #     # self.cpu.dbus.stb,
-        #     # self.cpu.dbus.cyc,
-        #     # self.cpu.dbus.adr,
-        #     # self.cpu.dbus.we,
-        #     # self.cpu.dbus.ack,
-        #     # self.cpu.dbus.sel,
-        #     # self.cpu.dbus.dat_w,
-        #     # self.cpu.dbus.dat_r,
-        # ]
+            # axi_lite_hbm.aw,
+            # axi_lite_hbm.w,
+            # axi_lite_hbm.b,
+            # axi_lite_hbm.ar,
+            # axi_lite_hbm.r,
+            # self.cpu.ibus.stb,
+            # self.cpu.ibus.cyc,
+            # self.cpu.ibus.adr,
+            # self.cpu.ibus.we,
+            # self.cpu.ibus.ack,
+            # self.cpu.ibus.sel,
+            # self.cpu.ibus.dat_w,
+            # self.cpu.ibus.dat_r,
+            # self.cpu.dbus.stb,
+            # self.cpu.dbus.cyc,
+            # self.cpu.dbus.adr,
+            # self.cpu.dbus.we,
+            # self.cpu.dbus.ack,
+            # self.cpu.dbus.sel,
+            # self.cpu.dbus.dat_w,
+            # self.cpu.dbus.dat_r,
+        ]
 
-        # from litescope import LiteScopeAnalyzer
-        # self.submodules.analyzer = LiteScopeAnalyzer(analyzer_signals,
-        #     depth = 512,
-        #     clock_domain="sys",
-        #     samplerate=sys_clk_freq,
-        #     csr_csv="analyzer.csv",
-        # )
+        from litescope import LiteScopeAnalyzer
+        self.submodules.analyzer = LiteScopeAnalyzer(analyzer_signals,
+            depth = 1024,
+            clock_domain="sys",
+            samplerate=sys_clk_freq,
+            csr_csv="analyzer.csv",
+        )
 
         # analyzer_signals = [axi_lite_hbm.aw]
 
@@ -254,7 +275,7 @@ class BaseSoC(SoCCore):
         # PCIe -------------------------------------------------------------------------------------
         if with_pcie:
             self.pcie_phy = USPPCIEPHY(platform, platform.request("pcie_x4"),
-                data_width = 128,
+                data_width = 256,
                 bar0_size  = 0x20000)
             self.add_pcie(phy=self.pcie_phy, ndmas=1)
 
