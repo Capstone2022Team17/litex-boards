@@ -45,7 +45,7 @@ from litescope import LiteScopeAnalyzer
 
 from litedram.frontend.bist import  LiteDRAMBISTGenerator, LiteDRAMBISTChecker
 
-from litex_boards.targets.HBMPortAccess import HBMAXILiteAccess, HBMReadAndWriteSM
+from litex_boards.targets.HBMPortAccess import HBMReadAndWriteSM, HBMCSRSCommon #, HBMBISTStarter, HBMBIST
 
 from litex.build.sim.config import SimConfig
 
@@ -67,6 +67,7 @@ class _CRG(LiteXModule):
             #############################
             self.cd_hbm_ref = ClockDomain()
             self.cd_apb     = ClockDomain()
+            self.cd_axi_ref = ClockDomain()
             #############################
 
         # # #
@@ -86,6 +87,7 @@ class _CRG(LiteXModule):
             ##########################################
             pll.create_clkout(self.cd_hbm_ref, 100e6)
             pll.create_clkout(self.cd_apb,     100e6)
+            # pll.create_clkout(self.cd_axi_ref, 400e6)
             ##########################################
 
             pll.create_clkout(self.cd_pll4x, sys_clk_freq*4, buf=None, with_reset=False)
@@ -150,6 +152,9 @@ class BaseSoC(SoCCore):
             # Link HBM2 channel 0 as main RAM
             self.bus.add_region("main_ram", SoCRegion(origin=0x4000_0000, size=0x1000_0000, linker=True)) # 256MB.
 
+            #####################################################################################
+            # Added code 
+
             # axi_lite_hbm = AXILiteInterface(data_width=256, address_width=33)
             # self.submodules += AXILite2AXI(axi_lite_hbm, hbm.axi[4])
 
@@ -157,6 +162,8 @@ class BaseSoC(SoCCore):
                 setattr(self.submodules, f"hbm_{i}", HBMReadAndWriteSM(hbm.axi[i]))
                 # self.submodules.hbm_4 = HBMReadAndWriteSM(hbm.axi[i])
                 self.add_csr(f"hbm_{i}")
+
+            #####################################################################################
         
         else:
             # DDR4 SDRAM -------------------------------------------------------------------------------
@@ -168,7 +175,6 @@ class BaseSoC(SoCCore):
                     iodelay_clk_freq = 600e6,
                     is_rdimm         = True)
                 self.add_sdram("sdram",
-                    with_bist     = True,
                     phy           = self.ddrphy,
                     module        = MTA18ASF2G72PZ(sys_clk_freq, "1:4"),
                     size          = 0x40000000,
@@ -186,59 +192,152 @@ class BaseSoC(SoCCore):
             os.makedirs("ip/hbm", exist_ok=True)
             os.system("mv hbm_0.xci.txt ip/hbm/hbm_0.xci")
 
+            #####################################################################################
+            # Added code 
+
+            self.submodules.commonRegs = HBMCSRSCommon()
+
             for i in range(0, 32):
-                setattr(self.submodules, f"hbm_{i}", HBMReadAndWriteSM(hbm.axi[i]))
+                setattr(self.submodules, f"hbm_{i}", HBMReadAndWriteSM(hbm.axi[i], self.commonRegs, i))
                 # self.submodules.hbm_4 = HBMReadAndWriteSM(hbm.axi[i])
                 self.add_csr(f"hbm_{i}")
 
-        # analyzer_signals = [
-        #     hbm.axi[4].aw,
-        #     hbm.axi[4].w,
-        #     hbm.axi[4].b,
-        #     hbm.axi[4].ar,
-        #     hbm.axi[4].r,
-        #     # self.bus.slaves["hbm0"].adr,
-        #     # self.bus.slaves["hbm0"].dat_w,
-        #     # self.bus.slaves["hbm0"].dat_r,
-        #     # self.bus.slaves["hbm0"].sel,
-        #     # self.bus.slaves["hbm0"].cyc,
-        #     # self.bus.slaves["hbm0"].stb,
-        #     # self.bus.slaves["hbm0"].ack,
-        #     # self.bus.slaves["hbm0"].we,
-        #     # self.bus.slaves["hbm0"].cti,
-        #     # self.bus.slaves["hbm0"].bte,
-        #     # self.bus.slaves["hbm0"].err,
+            # setattr(self.submodules, f"hbm4", HBMReadAndWriteSM(hbm.axi[4]))
+            # self.add_csr("hbm4")
 
-        #     # axi_lite_hbm.aw,
-        #     # axi_lite_hbm.w,
-        #     # axi_lite_hbm.b,
-        #     # axi_lite_hbm.ar,
-        #     # axi_lite_hbm.r,
-        #     # self.cpu.ibus.stb,
-        #     # self.cpu.ibus.cyc,
-        #     # self.cpu.ibus.adr,
-        #     # self.cpu.ibus.we,
-        #     # self.cpu.ibus.ack,
-        #     # self.cpu.ibus.sel,
-        #     # self.cpu.ibus.dat_w,
-        #     # self.cpu.ibus.dat_r,
-        #     # self.cpu.dbus.stb,
-        #     # self.cpu.dbus.cyc,
-        #     # self.cpu.dbus.adr,
-        #     # self.cpu.dbus.we,
-        #     # self.cpu.dbus.ack,
-        #     # self.cpu.dbus.sel,
-        #     # self.cpu.dbus.dat_w,
-        #     # self.cpu.dbus.dat_r,
-        # ]
+            # self.submodules.hbm_fsm_vars = hbm_fsm_vars = HBMBISTStarter()
+            # for i in range(0, 32):
+            #     setattr(self.submodules, f"hbm_{i}", HBMBIST(hbm.axi[i], hbm_fsm_vars, i))
+            #     # self.submodules.hbm_4 = HBMReadAndWriteSM(hbm.axi[i])
+            #     self.add_csr(f"hbm_{i}")
 
-        # from litescope import LiteScopeAnalyzer
-        # self.submodules.analyzer = LiteScopeAnalyzer(analyzer_signals,
-        #     depth = 512,
-        #     clock_domain="sys",
-        #     samplerate=sys_clk_freq,
-        #     csr_csv="analyzer.csv",
-        # )
+            #####################################################################################
+
+        analyzer_signals = [
+            hbm.axi[0].aw,
+            hbm.axi[0].w,
+            hbm.axi[0].b,
+            hbm.axi[0].ar,
+            hbm.axi[0].r,
+            self.hbm_0.prepwritecommand_fsm.status,
+            self.hbm_1.prepwritecommand_fsm.status,
+            self.hbm_2.prepwritecommand_fsm.status,
+            self.hbm_3.prepwritecommand_fsm.status,
+            self.hbm_4.prepwritecommand_fsm.status,
+            self.hbm_5.prepwritecommand_fsm.status,
+            self.hbm_6.prepwritecommand_fsm.status,
+            self.hbm_7.prepwritecommand_fsm.status,
+            self.hbm_8.prepwritecommand_fsm.status,
+            self.hbm_9.prepwritecommand_fsm.status,
+            self.hbm_10.prepwritecommand_fsm.status,
+            self.hbm_11.prepwritecommand_fsm.status,
+            self.hbm_12.prepwritecommand_fsm.status,
+            self.hbm_13.prepwritecommand_fsm.status,
+            self.hbm_14.prepwritecommand_fsm.status,
+            self.hbm_15.prepwritecommand_fsm.status,
+            self.hbm_16.prepwritecommand_fsm.status,
+            self.hbm_17.prepwritecommand_fsm.status,
+            self.hbm_18.prepwritecommand_fsm.status,
+            self.hbm_19.prepwritecommand_fsm.status,
+            self.hbm_20.prepwritecommand_fsm.status,
+            self.hbm_21.prepwritecommand_fsm.status,
+            self.hbm_22.prepwritecommand_fsm.status,
+            self.hbm_23.prepwritecommand_fsm.status,
+            self.hbm_24.prepwritecommand_fsm.status,
+            self.hbm_25.prepwritecommand_fsm.status,
+            self.hbm_26.prepwritecommand_fsm.status,
+            self.hbm_27.prepwritecommand_fsm.status,
+            self.hbm_28.prepwritecommand_fsm.status,
+            self.hbm_29.prepwritecommand_fsm.status,
+            self.hbm_30.prepwritecommand_fsm.status,
+            self.hbm_31.prepwritecommand_fsm.status,
+            self.hbm_0.prepreadcommand_fsm.status,
+            self.hbm_1.prepreadcommand_fsm.status,
+            self.hbm_2.prepreadcommand_fsm.status,
+            self.hbm_3.prepreadcommand_fsm.status,
+            self.hbm_4.prepreadcommand_fsm.status,
+            self.hbm_5.prepreadcommand_fsm.status,
+            self.hbm_6.prepreadcommand_fsm.status,
+            self.hbm_7.prepreadcommand_fsm.status,
+            self.hbm_8.prepreadcommand_fsm.status,
+            self.hbm_9.prepreadcommand_fsm.status,
+            self.hbm_10.prepreadcommand_fsm.status,
+            self.hbm_11.prepreadcommand_fsm.status,
+            self.hbm_12.prepreadcommand_fsm.status,
+            self.hbm_13.prepreadcommand_fsm.status,
+            self.hbm_14.prepreadcommand_fsm.status,
+            self.hbm_15.prepreadcommand_fsm.status,
+            self.hbm_16.prepreadcommand_fsm.status,
+            self.hbm_17.prepreadcommand_fsm.status,
+            self.hbm_18.prepreadcommand_fsm.status,
+            self.hbm_19.prepreadcommand_fsm.status,
+            self.hbm_20.prepreadcommand_fsm.status,
+            self.hbm_21.prepreadcommand_fsm.status,
+            self.hbm_22.prepreadcommand_fsm.status,
+            self.hbm_23.prepreadcommand_fsm.status,
+            self.hbm_24.prepreadcommand_fsm.status,
+            self.hbm_25.prepreadcommand_fsm.status,
+            self.hbm_26.prepreadcommand_fsm.status,
+            self.hbm_27.prepreadcommand_fsm.status,
+            self.hbm_28.prepreadcommand_fsm.status,
+            self.hbm_29.prepreadcommand_fsm.status,
+            self.hbm_30.prepreadcommand_fsm.status,
+            self.hbm_31.prepreadcommand_fsm.status,
+            self.hbm_0.total_writes.status,
+            self.hbm_0.total_reads.status,
+            self.hbm_0.ticks.status,
+            self.hbm_0.delay_state_fsm.status,
+            self.hbm_0.waitinstruction_fsm.status,
+            self.hbm_0.port_settings.storage,
+            self.hbm_0.port_id_const,
+            self.hbm_0.port_num_array,
+            self.hbm_0.exec_done.status,
+            self.commonRegs.start.storage,
+            self.hbm_0.ticks.status,
+
+
+            # self.bus.slaves["hbm0"].adr,
+            # self.bus.slaves["hbm0"].dat_w,
+            # self.bus.slaves["hbm0"].dat_r,
+            # self.bus.slaves["hbm0"].sel,
+            # self.bus.slaves["hbm0"].cyc,
+            # self.bus.slaves["hbm0"].stb,
+            # self.bus.slaves["hbm0"].ack,
+            # self.bus.slaves["hbm0"].we,
+            # self.bus.slaves["hbm0"].cti,
+            # self.bus.slaves["hbm0"].bte,
+            # self.bus.slaves["hbm0"].err,
+
+            # axi_lite_hbm.aw,
+            # axi_lite_hbm.w,
+            # axi_lite_hbm.b,
+            # axi_lite_hbm.ar,
+            # axi_lite_hbm.r,
+            # self.cpu.ibus.stb,
+            # self.cpu.ibus.cyc,
+            # self.cpu.ibus.adr,
+            # self.cpu.ibus.we,
+            # self.cpu.ibus.ack,
+            # self.cpu.ibus.sel,
+            # self.cpu.ibus.dat_w,
+            # self.cpu.ibus.dat_r,
+            # self.cpu.dbus.stb,
+            # self.cpu.dbus.cyc,
+            # self.cpu.dbus.adr,
+            # self.cpu.dbus.we,
+            # self.cpu.dbus.ack,
+            # self.cpu.dbus.sel,
+            # self.cpu.dbus.dat_w,
+            # self.cpu.dbus.dat_r,
+        ]
+
+        from litescope import LiteScopeAnalyzer
+        self.submodules.analyzer = LiteScopeAnalyzer(analyzer_signals,
+            depth = 2048,
+            clock_domain="sys",
+            samplerate=sys_clk_freq,
+            csr_csv="analyzer.csv",
+        )
 
         # analyzer_signals = [axi_lite_hbm.aw]
 
@@ -254,7 +353,7 @@ class BaseSoC(SoCCore):
         # PCIe -------------------------------------------------------------------------------------
         if with_pcie:
             self.pcie_phy = USPPCIEPHY(platform, platform.request("pcie_x4"),
-                data_width = 128,
+                data_width = 256,
                 bar0_size  = 0x20000)
             self.add_pcie(phy=self.pcie_phy, ndmas=1)
 
