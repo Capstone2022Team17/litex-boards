@@ -325,7 +325,7 @@ class HBMReadAndWriteSM(Module, AutoCSR):
             NextValue(self.ticks.status, self.ticks.status + 1),
             If(axi_port.ar.ready, 
                 NextState("READ_BEAT"),
-                NextValue(self.total_reads.status, self.total_reads.status + 1),
+                NextValue(self.total_reads.status, self.total_reads.status),
             ).Else(
                 NextValue(self.total_reads.status, self.total_reads.status),
                 NextState("READ_VALID"),
