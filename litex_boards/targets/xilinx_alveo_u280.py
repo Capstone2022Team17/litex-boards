@@ -185,7 +185,7 @@ class BaseSoC(SoCCore):
             self.add_ram("firmware_ram", 0x20000000, 0x8000)
 
             # Add HBM Core.
-            self.hbm = hbm = ClockDomainsRenamer({"axi": "sys"})(USPHBM2(platform))
+            self.hbm = hbm = ClockDomainsRenamer({"axi": "axi_ref"})(USPHBM2(platform))
 
             # Get HBM .xci.
             os.system("wget https://github.com/litex-hub/litex-boards/files/6893157/hbm_0.xci.txt")

@@ -141,6 +141,10 @@ class HBMReadAndWriteSM(Module, AutoCSR):
             ONE_BIT_WIDE, 
             description="FSM: Stage 2 of write",
         )
+        self.beat_fsm = CSRStatus(
+            ONE_BIT_WIDE, 
+            description="FSM: Stage 2 of write",
+        )
         self.prepwriteresponse_fsm = CSRStatus(
             ONE_BIT_WIDE,
             description="FSM: Stage 3 of write",
@@ -897,35 +901,16 @@ class HBMReadAndWriteSM(Module, AutoCSR):
 #             )
 #         )
 
-#         hbm_bist_fsm.act(
-#             "FINISHED",
-#             self.state_info.eq(8),
-#             NextValue(self.total_writes.status, self.total_writes.status),
-#             NextValue(self.total_reads.status, self.total_reads.status),
-#             NextValue(self.total_ticks.status, self.total_ticks.status),
-#             self.done.status.eq(1),
-#             If(~starterObject.start.storage,
-#                 NextState("BIST_IDLE"),   
-#             ).Else(
-#                 NextState("FINISHED"),
-#             )
-#         )
+#         self.address = CSRStorage(28, description="Rightmost 28 bits of hbm address, will be shifted by 5")
+#         self.data = CSRStorage(32, description="32 bits of data (max storage of csrstorage)")
+#         self.perform_write = CSRStorage(ONE_BIT_WIDE, description="Start performing a write")
+#         self.perform_read = CSRStorage(ONE_BIT_WIDE, description="Start to perform a read")
+#         self.error_occured = CSRStatus(ONE_BIT_WIDE, description="Error occured")
 
         
 
 
-#         # This sync block will enable the possibility to check the data
-#         # self.sync += [
-#         #     If(axi_port.w.ready,
-#         #         self.data_check[0:(self.burst_counter * DATA_256_BITS)].eq(self.data_check[0:(self.burst_counter * DATA_256_BITS)]),
-#         #         self.data_check[(self.burst_counter * DATA_256_BITS):((self.burst_counter * DATA_256_BITS) + DATA_256_BITS)].eq(self.data_write),
-#         #         self.data_check[((self.burst_counter * DATA_256_BITS) + DATA_256_BITS):FULL_DATA_CONTAINER].eq(self.data_check[((self.burst_counter * DATA_256_BITS) + DATA_256_BITS):FULL_DATA_CONTAINER]),
-#         #     ).Elif(self.data_reset,
-#         #         self.data_check.eq(0),
-#         #     ).Else(
-#         #         self.data_check.eq(self.data_check),
-#         #     )
-#         # ]
+#         )
 
 #         # self.address_base = CSRStorage(
 #         #     28, description="Base address, first port being used will use this one."
